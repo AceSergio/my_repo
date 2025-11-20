@@ -1,0 +1,9 @@
+[global]
+log = true
+pid_file = /tmp/HTTPd.pid
+
+[[vhosts]]
+server_name = my_server
+ip = 127.0.0.1
+port = 8080
+root_dir = .

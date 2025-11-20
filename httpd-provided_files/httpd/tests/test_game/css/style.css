@@ -1,0 +1,112 @@
+body {
+    font-family: 'Consolas', 'Courier New', monospace;
+    background-color: #0d1117;
+    color: #00ff00;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+#game-container {
+    width: 90%;
+    max-width: 800px;
+    border: 2px solid #00ff00;
+    box-shadow: 0 0 10px #00ff00;
+    background-color: #161b22;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+header h1 {
+    text-align: center;
+    color: #ff00ff;
+    border-bottom: 1px dashed #00ff00;
+    padding-bottom: 10px;
+}
+
+#game-scene {
+    min-height: 350px;
+    padding: 20px 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.narrative {
+    font-size: 1.1em;
+    line-height: 1.6;
+    margin-bottom: 25px;
+    border-left: 3px solid #00ff00;
+    padding-left: 15px;
+}
+
+.choices {
+    margin-top: 20px;
+}
+
+.choice-button, .action-button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px;
+    margin: 8px 0;
+    background-color: #003300;
+    color: #00ff00;
+    text-decoration: none;
+    border: 1px solid #00ff00;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+    font-family: inherit;
+    font-size: 1em;
+}
+
+.choice-button:hover, .action-button:hover {
+    background-color: #00ff00;
+    color: #0d1117;
+}
+
+.path-name {
+    font-weight: bold;
+    color: #ffc300;
+    margin-right: 10px;
+}
+.path-desc {
+    font-style: italic;
+}
+
+#status-bar {
+    border-top: 1px dashed #00ff00;
+    padding-top: 10px;
+    margin-top: 20px;
+    text-align: right;
+    font-size: 0.9em;
+}
+
+.log-message {
+    background-color: #232b38;
+    padding: 10px;
+    margin-top: 15px;
+    border: 1px solid #ff00ff;
+    color: #ff00ff;
+}
+
+.form-choice input {
+    width: calc(100% - 130px);
+    padding: 10px;
+    background-color: #003300;
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    font-family: inherit;
+    font-size: 1em;
+    box-sizing: border-box;
+    vertical-align: top;
+}
+.form-choice button {
+    width: 120px;
+    display: inline-block;
+    vertical-align: top;
+    text-align: center;
+}
