@@ -1,28 +1,27 @@
+# ---Variables---
+
 CC = gcc
 CFLAGS = -std=c99 -Werror -Wall -Wextra -Wvla -pedantic -D_POSIX_C_SOURCE=200809L
 INCLUDES = -I../src
 
-# Sources du projet nécessaires pour les tests
 SRC_STRING = ../src/utils/string/string.c
 SRC_HTTP = ../src/http/request.c
 
-# Binaires de test
 BIN_TEST_STRING = test_string_bin
 BIN_TEST_HTTP = test_http_bin
+
+# ---TARGET---
 
 .PHONY: all clean check check_unit check_integration check_daemon
 
 all: $(BIN_TEST_STRING) $(BIN_TEST_HTTP)
 
-# Compilation Test String
 $(BIN_TEST_STRING): test_string/test_string.c $(SRC_STRING)
 	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@
 
-# Compilation Test HTTP
 $(BIN_TEST_HTTP): test_http/test_http.c $(SRC_HTTP)
 	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@
 
-# Exécution des tests
 check: check_unit check_integration
 
 check_unit: all
@@ -31,11 +30,11 @@ check_unit: all
 	./$(BIN_TEST_HTTP)
 
 check_integration:
-	@echo "\n>>> Running Integration Tests (Python) <<<"
+	@echo "\n>>> Running Integration Tests <<<"
 	python3 test_integration.py
 
 check_daemon:
-	@echo "\n>>> Running Daemon Tests (Python) <<<"
+	@echo "\n>>> Running Daemon Tests <<<"
 	python3 test_daemon.py
 
 clean:

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Adventure: Firewall</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="assets/images/icon.png" type="image/png">
+</head>
+<body>
+<div id="game-container">
+    <header>
+        <h1>[ DIRECTORY: FIREWALL_ZONE ]</h1>
+    </header>
+    <div id="game-scene">
+        <p class="narrative">
+            The **Firewall** is blocking you. It displays a challenge:
+            <br>
+            "To pass, what is the **HTTP status code** that indicates a resource was not found?"
+        </p>
+        <div class="choices form-choice">
+            <input type="text" id="pass-input" placeholder="Enter the numeric code (e.g., 200)">
+            <button id="submit-code-button" class="action-button">
+                [ cmd: AUTH ] Submit
+            </button>
+        </div>
+        <div id="message-area" class="log-message">
+            &gt; You must have the **Service Key** to attempt this riddle!
+        </div>
+        <div class="choices">
+            <a href="index.html" class="choice-button return-button" data-sound="click.mp3">
+                <span class="path-name">../</span>
+                <span class="path-desc">Return to the root directory</span>
+            </a>
+        </div>
+    </div>
+    <footer>
+        <div id="status-bar">Packet Status: <span id="inventory-status"></span></div>
+    </footer>
+</div>
+<script src="js/script.js"></script>
+</body>
+</html>

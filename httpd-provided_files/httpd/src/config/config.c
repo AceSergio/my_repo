@@ -46,7 +46,6 @@ static const struct option long_options[] = {
     { 0, 0, 0, 0 }
 };
 
-// Fonction utilitaire pour copier une chaîne (et éviter les fuites)
 static char *safe_strdup(const char *src)
 {
     if (!src)
@@ -54,8 +53,6 @@ static char *safe_strdup(const char *src)
     return strdup(src);
 }
 
-// Fonction utilitaire pour initialiser la structure et définir les valeurs par
-// défaut.
 static struct config *config_create_and_init(void)
 {
     struct config *cfg = calloc(1, sizeof(struct config));
@@ -71,10 +68,10 @@ static struct config *config_create_and_init(void)
 
     // Valeurs par défaut
     cfg->daemon_action = safe_strdup(NO_DAEMON_ACTION);
-    cfg->log_enabled = true; // Par défaut: true
-    cfg->log_file = NULL; // Par défaut: NULL
+    cfg->log_enabled = true;
+    cfg->log_file = NULL;
     cfg->vhost->default_file =
-        safe_strdup("index.html"); // Par défaut: "index.html"
+        safe_strdup("index.html");
 
     if (!cfg->daemon_action || !cfg->vhost->default_file)
     {
@@ -85,7 +82,6 @@ static struct config *config_create_and_init(void)
     return cfg;
 }
 
-// Fonction utilitaire pour vérifier les champs obligatoires
 static bool check_mandatory_fields(const struct config *cfg)
 {
     return cfg->pid_file != NULL && cfg->vhost->server_name != NULL
@@ -101,7 +97,6 @@ struct config *parse_configuration(int argc, char **argv)
         return NULL;
     }
 
-    // Réinitialiser getopt pour permettre plusieurs appels successifs
     optind = 1;
     opterr = 0;
 
@@ -110,7 +105,6 @@ struct config *parse_configuration(int argc, char **argv)
 
     while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1)
     {
-        // Si c est 0, c'est une option longue
         if (c == 0)
         {
             c = long_options[option_index].val;
@@ -118,7 +112,6 @@ struct config *parse_configuration(int argc, char **argv)
 
         switch (c)
         {
-        // --- Global Options ---
         case OPT_PID_FILE:
             free(cfg->pid_file);
             cfg->pid_file = safe_strdup(optarg);
@@ -130,7 +123,6 @@ struct config *parse_configuration(int argc, char **argv)
             break;
 
         case OPT_LOG:
-            // Log: "true" ou "false", sinon "false"
             if (strcmp(optarg, "true") == 0)
             {
                 cfg->log_enabled = true;
@@ -162,7 +154,6 @@ struct config *parse_configuration(int argc, char **argv)
             {
                 string_destroy(cfg->vhost->server_name);
             }
-            // strlen est maintenant bien visible grâce à <string.h>
             cfg->vhost->server_name = string_create(optarg, strlen(optarg));
             break;
 
@@ -210,12 +201,10 @@ void config_destroy(struct config *cfg)
         return;
     }
 
-    // Libérer les champs char*
     free(cfg->pid_file);
     free(cfg->log_file);
     free(cfg->daemon_action);
 
-    // Libérer les champs vhost
     if (cfg->vhost)
     {
         if (cfg->vhost->server_name)
@@ -230,3 +219,4 @@ void config_destroy(struct config *cfg)
 
     free(cfg);
 }
+

@@ -1,10 +1,12 @@
-#include "utils/string/string.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
-void test_create(void) {
+#include "utils/string/string.h"
+
+void test_create(void)
+{
     printf("[TEST] String Create... ");
     struct string *s = string_create("Hello", 5);
     assert(s != NULL);
@@ -14,7 +16,8 @@ void test_create(void) {
     printf("OK\n");
 }
 
-void test_concat(void) {
+void test_concat(void)
+{
     printf("[TEST] String Concat... ");
     struct string *s = string_create("Hello", 5);
     string_concat_str(s, " World", 6);
@@ -24,7 +27,8 @@ void test_concat(void) {
     printf("OK\n");
 }
 
-void test_compare(void) {
+void test_compare(void)
+{
     printf("[TEST] String Compare... ");
     struct string *s = string_create("Toto", 4);
     assert(string_compare_n_str(s, "Toto", 4) == 0);
@@ -33,7 +37,8 @@ void test_compare(void) {
     printf("OK\n");
 }
 
-int main(void) {
+int main(void)
+{
     printf("=== STRING SUITE ===\n");
     test_create();
     test_concat();
