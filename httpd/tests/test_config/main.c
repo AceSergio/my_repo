@@ -2,8 +2,7 @@
 
 #include "test_config.h"
 
-int main(void)
-{
-    run_string_tests();
-    return 0;
+int main(void) {
+  run_string_tests();
+  return 0;
 }

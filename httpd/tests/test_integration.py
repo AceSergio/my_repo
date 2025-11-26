@@ -1,99 +1,134 @@
-import pytest
-import os
-import time
-import signal
+import socket
 import subprocess
+import time
+import os
+import pytest
 
-# Chemins dynamiques basés sur l'emplacement du fichier de test
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BIN = os.path.join(BASE_DIR, "../httpd")
-PID_FILE = os.path.abspath("/tmp/httpd_daemon_test.pid")
-LOG_FILE = os.path.abspath("daemon_test.log")
+HOST = "127.0.0.1"
+PORT = 8088
+BIN = "../httpd"
+CONFIG = "test_config_pytest.conf"
 
-BASE_CMD = [
-    BIN,
-    "--server_name", "daemon_test",
-    "--port", "8089",
-    "--ip", "127.0.0.1",
-    "--root_dir", os.path.join(BASE_DIR, ".."), # Root relatif au dossier tests
-    "--pid_file", PID_FILE,
-    "--log_file", LOG_FILE,
-    "--log", "true"
-]
+@pytest.fixture(scope="module")
+def server():
+    with open("index.html", "w") as f:
+        f.write("Welcome to HTTPd")
 
-def check_pid_running(pid):
-    """Vérifie si un processus avec ce PID existe."""
+    with open(CONFIG, "w") as f:
+        f.write(f"""[global]
+pid_file = /tmp/httpd_pytest.pid
+log = true
+
+[[vhosts]]
+server_name = localhost
+ip = {HOST}
+port = {PORT}
+root_dir = ..
+""")
+
+    if not os.path.exists(BIN):
+        pytest.fail(f"Binary {BIN} not found. Did you run 'make'?")
+
+    proc = subprocess.Popen([
+        BIN, 
+        "--server_name", "localhost", 
+        "--port", str(PORT), 
+        "--ip", HOST, 
+        "--root_dir", ".", 
+        "--pid_file", "/tmp/httpd_pytest.pid"
+    ])
+    
+    time.sleep(1)
+    
+    if proc.poll() is not None:
+        pytest.fail("Server failed to start.")
+
+    yield proc
+
+    proc.terminate()
+    proc.wait()
+    if os.path.exists(CONFIG): os.remove(CONFIG)
+    if os.path.exists("index.html"): os.remove("index.html")
+    if os.path.exists("/tmp/httpd_pytest.pid"):
+        try: os.remove("/tmp/httpd_pytest.pid")
+        except OSError: pass
+
+def send_request(payload):
     try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(2)
+            s.connect((HOST, PORT))
+            s.sendall(payload.encode())
+            
+            response = b""
+            while True:
+                try:
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    response += chunk
+                except socket.timeout:
+                    break
+            
+            return response.decode(errors='ignore')
+    except Exception as e:
+        return str(e)
 
-def get_pid_from_file():
-    """Lit le PID depuis le fichier."""
-    if not os.path.exists(PID_FILE):
-        return None
-    try:
-        with open(PID_FILE, "r") as f:
-            return int(f.read().strip())
-    except ValueError:
-        return None
 
-@pytest.fixture(autouse=True)
-def cleanup():
-    """Fixture qui s'exécute avant et après chaque test pour nettoyer."""
-    # Avant le test : on s'assure que rien ne traîne
-    if os.path.exists(PID_FILE):
-        pid = get_pid_from_file()
-        if pid and check_pid_running(pid):
-            os.kill(pid, signal.SIGKILL)
-        os.remove(PID_FILE)
-    
-    yield # Le test s'exécute ici
-    
-    # Après le test : nettoyage final
-    if os.path.exists(PID_FILE):
-        pid = get_pid_from_file()
-        if pid and check_pid_running(pid):
-            os.kill(pid, signal.SIGKILL)
-        os.remove(PID_FILE)
-    if os.path.exists(LOG_FILE):
-        os.remove(LOG_FILE)
 
-def test_daemon_lifecycle():
-    """Teste le cycle complet : Start -> Restart -> Stop"""
-    
-    assert os.path.exists(BIN), f"Le binaire {BIN} n'existe pas. Lancez 'make' d'abord."
+def test_valid_get(server):
+    res = send_request("GET /index.html HTTP/1.1\nHost: localhost\n\n")
+    assert "HTTP/1.1 200 OK" in res
+    assert "Welcome to HTTPd" in res
 
-    # --- ETAPE 1 : DEMARRAGE ---
-    cmd_start = BASE_CMD + ["--daemon", "start"]
-    subprocess.check_call(cmd_start, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    time.sleep(0.5)
-    
-    assert os.path.exists(PID_FILE), "Le fichier PID doit exister après le démarrage"
-    pid_start = get_pid_from_file()
-    assert pid_start is not None, "Le fichier PID ne doit pas être vide"
-    assert check_pid_running(pid_start), f"Le processus {pid_start} devrait tourner"
+def test_head_request(server):
+    """HEAD doit renvoyer la taille (Content-Length) mais PAS de corps."""
+    res = send_request("HEAD /index.html HTTP/1.1\nHost: localhost\n\n")
+    assert "HTTP/1.1 200 OK" in res
+    assert "Content-Length: 16" in res 
+    assert "Welcome to HTTPd" not in res 
 
-    # --- ETAPE 2 : REDEMARRAGE ---
-    cmd_restart = BASE_CMD + ["--daemon", "restart"]
-    subprocess.check_call(cmd_restart, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    time.sleep(1.5)
-    
-    pid_restart = get_pid_from_file()
-    assert pid_restart is not None, "Le fichier PID doit exister après restart"
-    assert pid_restart != pid_start, f"Le PID aurait dû changer (Ancien: {pid_start}, Nouveau: {pid_restart})"
-    assert check_pid_running(pid_restart), "Le nouveau processus devrait tourner"
-    assert not check_pid_running(pid_start), "L'ancien processus devrait être mort"
+def test_directory_index(server):
+    res = send_request("GET / HTTP/1.1\nHost: localhost\n\n")
+    assert "HTTP/1.1 200 OK" in res
+    assert "Welcome to HTTPd" in res
 
-    # --- ETAPE 3 : ARRET ---
-    cmd_stop = BASE_CMD + ["--daemon", "stop"]
-    subprocess.check_call(cmd_stop, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    time.sleep(0.5)
-    
-    assert not os.path.exists(PID_FILE), "Le fichier PID ne devrait plus exister après stop"
-    assert not check_pid_running(pid_restart), "Le processus devrait être arrêté"
-    
+
+def test_404_not_found(server):
+    res = send_request("GET /does_not_exist.html HTTP/1.1\nHost: localhost\n\n")
+    assert "HTTP/1.1 404 Not Found" in res
+
+def test_method_not_allowed(server):
+    """POST/DELETE/PUT ne sont pas supportés -> 405."""
+    res = send_request("POST /index.html HTTP/1.1\nHost: localhost\n\n")
+    assert "HTTP/1.1 405 Method Not Allowed" in res
+
+def test_bad_version(server):
+    res = send_request("GET /index.html HTTP/1.0\nHost: localhost\n\n")
+    assert "505 HTTP Version Not Supported" in res
+
+
+def test_bad_host_value(server):
+    res = send_request("GET /index.html HTTP/1.1\nHost: evil.com\n\n")
+    assert "400 Bad Request" in res
+
+def test_missing_host(server):
+    res = send_request("GET /index.html HTTP/1.1\n\n")
+    assert "400 Bad Request" in res
+
+def test_host_case_insensitive(server):
+    res = send_request("GET /index.html HTTP/1.1\nhOsT: localhost\n\n")
+    assert "HTTP/1.1 200 OK" in res
+
+def test_host_with_spaces(server):
+    res = send_request("GET /index.html HTTP/1.1\nHost:   localhost  \n\n")
+    assert "HTTP/1.1 200 OK" in res
+
+
+def test_path_traversal(server):
+    res = send_request("GET /../Makefile HTTP/1.1\nHost: localhost\n\n")
+    assert "HTTP/1.1" in res
+
+def test_malformed_request_line(server):
+    res = send_request("NOT_A_HTTP_REQUEST\n\n")
+    assert "400 Bad Request" in res

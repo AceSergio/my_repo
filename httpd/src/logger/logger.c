@@ -7,68 +7,63 @@
 #include <string.h>
 #include <time.h>
 
-static void get_log_date(char *buf, size_t size)
-{
-    time_t now = time(NULL);
-    struct tm *tm = gmtime(&now);
-    strftime(buf, size, "%a, %d %b %Y %H:%M:%S GMT", tm);
+static void date_log(char *tampon, size_t taille) {
+  time_t mtn = time(NULL);
+  struct tm *tm = gmtime(&mtn);
+  strftime(tampon, taille, "%a, %d %b %Y %H:%M:%S GMT", tm);
 }
 
-static const char *method_to_str(enum http_method method)
-{
-    switch (method)
-    {
-    case HTTP_GET:
-        return "GET";
-    case HTTP_HEAD:
-        return "HEAD";
-    default:
-        return "UNKNOWN";
-    }
+static const char *methode_vers_str(enum http_method methode) {
+  switch (methode) {
+  case HTTP_GET:
+    return "GET";
+  case HTTP_HEAD:
+    return "HEAD";
+  default:
+    return "UNKNOWN";
+  }
 }
 
-void logger_log_request(const struct http_request *req, const char *client_ip,
-                        const struct config *config)
-{
-    char date[128];
-    get_log_date(date, sizeof(date));
+void logger_log_request(const struct http_request *req, const char *ip_cli,
+                        const struct config *cfg) {
+  char date[128];
+  date_log(date, sizeof(date));
 
-    printf("%s [%s] received %s on '%s' from %s\n", date, config->vhost->server_name->data,
-           method_to_str(req->method), req->target, client_ip);
+  printf("%s [%s] received %s on '%s' from %s\n", date,
+         cfg->vhost->server_name->data, methode_vers_str(req->method),
+         req->target, ip_cli);
 
-    fflush(stdout); // Important pour que le log s'écrive immédiatement
+  fflush(stdout);
 }
 
 void logger_log_response(const struct http_request *req,
-                         const struct http_response *res, const char *client_ip,
-                         const struct config *config)
-{
-    char date[128];
-    get_log_date(date, sizeof(date));
+                         const struct http_response *rep, const char *ip_cli,
+                         const struct config *cfg) {
+  char date[128];
+  date_log(date, sizeof(date));
 
-    char status_code[4] = "000";
-    if (res->status_line && strlen(res->status_line) >= 12)
-    {
-        strncpy(status_code, res->status_line + 9, 3);
-    }
+  char code_statut[4] = "000";
+  if (rep->status_line && strlen(rep->status_line) >= 12) {
+    strncpy(code_statut, rep->status_line + 9, 3);
+  }
 
-    printf("%s [%s] responding with %s to %s for %s on '%s'\n", date,
-           config->vhost->server_name->data, status_code, client_ip,
-           method_to_str(req->method), req->target);
+  printf("%s [%s] responding with %s to %s for %s on '%s'\n", date,
+         cfg->vhost->server_name->data, code_statut, ip_cli,
+         methode_vers_str(req->method), req->target);
 
-    fflush(stdout);
+  fflush(stdout);
 }
 
-void logger_log_bad_request(const char *client_ip, const struct config *config)
-{
-    char date[128];
-    get_log_date(date, sizeof(date));
+void logger_log_bad_request(const char *ip_cli,
+                            const struct config *cfg) {
+  char date[128];
+  date_log(date, sizeof(date));
 
-    printf("%s [%s] received Bad Request from %s\n", date,
-           config->vhost->server_name->data, client_ip);
+  printf("%s [%s] received Bad Request from %s\n", date,
+         cfg->vhost->server_name->data, ip_cli);
 
-    printf("%s [%s] responding with 400 to %s\n", date,
-           config->vhost->server_name->data, client_ip);
+  printf("%s [%s] responding with 400 to %s\n", date,
+         cfg->vhost->server_name->data, ip_cli);
 
-    fflush(stdout);
+  fflush(stdout);
 }

@@ -14,162 +14,134 @@
 
 #include "server/server.h"
 
-static pid_t get_pid_from_file(const char *pid_file)
-{
-    FILE *f = fopen(pid_file, "r");
-    if (!f)
-        {
-            return -1;
-        }
+static pid_t recuperer_pid(const char *fichier_pid) {
+  FILE *f = fopen(fichier_pid, "r");
+  if (!f) {
+    return -1;
+  }
 
-    pid_t pid;
-    if (fscanf(f, "%d", &pid) != 1)
-    {
-        pid = -1;
-    }
-    fclose(f);
-    return pid;
+  pid_t pid;
+  if (fscanf(f, "%d", &pid) != 1) {
+    pid = -1;
+  }
+  fclose(f);
+  return pid;
 }
 
-static int is_process_running(pid_t pid)
-{
-    if (pid <= 0)
-        {
-            return 0;
-        }
-    if (kill(pid, 0) == 0)
-        {
-            return 1;
-        }
+static int processus_actif(pid_t pid) {
+  if (pid <= 0) {
     return 0;
+  }
+  if (kill(pid, 0) == 0) {
+    return 1;
+  }
+  return 0;
 }
 
-static int write_pid_file(const char *pid_file)
-{
-    FILE *f = fopen(pid_file, "w");
-    if (!f)
-    {
-        perror("fopen pid_file");
-        return -1;
+static int ecrire_pid(const char *fichier_pid) {
+  FILE *f = fopen(fichier_pid, "w");
+  if (!f) {
+    perror("fopen pid_file");
+    return -1;
+  }
+  fprintf(f, "%d\n", getpid());
+  fclose(f);
+  return 0;
+}
+
+static int arret_demon(struct config *cfg) {
+  pid_t pid = recuperer_pid(cfg->pid_file);
+
+  if (pid > 0 && processus_actif(pid)) {
+    printf("Stopping daemon (PID %d)...\n", pid);
+    if (kill(pid, SIGINT) == -1) {
+      perror("kill");
+      return 1;
     }
-    fprintf(f, "%d\n", getpid());
-    fclose(f);
+  } else {
+    printf("Daemon not running or PID file invalid.\n");
+  }
+
+  unlink(cfg->pid_file);
+  return 0;
+}
+
+static int lancement_demon(struct config *cfg) {
+  pid_t pid = recuperer_pid(cfg->pid_file);
+  if (pid > 0 && processus_actif(pid)) {
+    fprintf(stderr, "Daemon already running (PID %d)\n", pid);
+    return 1;
+  }
+
+  unlink(cfg->pid_file);
+
+  printf("Starting daemon...\n");
+
+  pid_t f = fork();
+  if (f < 0) {
+    perror("fork");
+    return 1;
+  }
+
+  if (f > 0) {
     return 0;
+  }
+
+  setsid();
+
+  if (ecrire_pid(cfg->pid_file) == -1) {
+    exit(1);
+  }
+
+  int fd_log;
+  const char *chemin_log = cfg->log_file ? cfg->log_file : "HTTPd.log";
+
+  if (cfg->log_enabled) {
+    fd_log = open(chemin_log, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd_log == -1) {
+      perror("open log file");
+      exit(1);
+    }
+    dup2(fd_log, STDOUT_FILENO);
+    dup2(fd_log, STDERR_FILENO);
+    close(fd_log);
+  } else {
+    int dev_null = open("/dev/null", O_WRONLY);
+    if (dev_null != -1) {
+      dup2(dev_null, STDOUT_FILENO);
+      dup2(dev_null, STDERR_FILENO);
+      close(dev_null);
+    }
+  }
+
+  close(STDIN_FILENO);
+
+  int res = server_start(cfg);
+
+  unlink(cfg->pid_file);
+  exit(res);
 }
 
-static int daemon_stop(struct config *config)
-{
-    pid_t pid = get_pid_from_file(config->pid_file);
+int daemon_handle_action(struct config *cfg) {
+  const char *action = cfg->daemon_action;
 
-    if (pid > 0 && is_process_running(pid))
-    {
-        printf("Stopping daemon (PID %d)...\n", pid);
-        if (kill(pid, SIGINT) == -1)
-        {
-            perror("kill");
-            return 1;
-        }
-    }
-    else
-    {
-        printf("Daemon not running or PID file invalid.\n");
-    }
+  if (strcmp(action, "NO_OPTION") == 0) {
+    return server_start(cfg);
+  }
 
-    unlink(config->pid_file);
-    return 0;
-}
+  if (strcmp(action, "start") == 0) {
+    return lancement_demon(cfg);
+  }
 
-static int daemon_start(struct config *config)
-{
-    pid_t pid = get_pid_from_file(config->pid_file);
-    if (pid > 0 && is_process_running(pid))
-    {
-        fprintf(stderr, "Daemon already running (PID %d)\n", pid);
-        return 1;
-    }
+  if (strcmp(action, "stop") == 0) {
+    return arret_demon(cfg);
+  }
 
-    unlink(config->pid_file);
+  if (strcmp(action, "restart") == 0) {
+    arret_demon(cfg);
+    sleep(1);
+    return lancement_demon(cfg);
+  }
 
-    printf("Starting daemon...\n");
-
-    pid_t f = fork();
-    if (f < 0)
-    {
-        perror("fork");
-        return 1;
-    }
-
-    if (f > 0)
-    {
-        return 0;
-    }
-
-    setsid();
-
-    if (write_pid_file(config->pid_file) == -1)
-    {
-        exit(1);
-    }
-
-    int log_fd;
-    const char *log_path = config->log_file ? config->log_file : "HTTPd.log";
-
-    if (config->log_enabled)
-    {
-        log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (log_fd == -1)
-        {
-            perror("open log file");
-            exit(1);
-        }
-        dup2(log_fd, STDOUT_FILENO);
-        dup2(log_fd, STDERR_FILENO);
-        close(log_fd);
-    }
-    else
-    {
-        int dev_null = open("/dev/null", O_WRONLY);
-        if (dev_null != -1)
-        {
-            dup2(dev_null, STDOUT_FILENO);
-            dup2(dev_null, STDERR_FILENO);
-            close(dev_null);
-        }
-    }
-
-    close(STDIN_FILENO);
-
-    int res = server_start(config);
-
-    unlink(config->pid_file);
-    exit(res);
-}
-
-int daemon_handle_action(struct config *config)
-{
-    const char *action = config->daemon_action;
-
-    if (strcmp(action, "NO_OPTION") == 0)
-    {
-        return server_start(config);
-    }
-
-    if (strcmp(action, "start") == 0)
-    {
-        return daemon_start(config);
-    }
-
-    if (strcmp(action, "stop") == 0)
-    {
-        return daemon_stop(config);
-    }
-
-    if (strcmp(action, "restart") == 0)
-    {
-        daemon_stop(config);
-        sleep(1);
-        return daemon_start(config);
-    }
-
-    return 2;
+  return 2;
 }

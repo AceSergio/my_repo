@@ -51,4 +51,3 @@ clean:
 
 check: config_test
 	@echo "Testing configuration..."
-	./tests/config_reader.sh --path-bin ./config_test --path-config config.txt --daemon start

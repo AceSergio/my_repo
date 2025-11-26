@@ -18,20 +18,16 @@ $(BIN_TEST_STRING): test_string/test_string.c $(SRC_STRING)
 $(BIN_TEST_HTTP): test_http/test_http.c $(SRC_HTTP)
 	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@
 
-check: check_unit check_integration
+check: check_unit check_pytest
 
 check_unit: all
 	@echo "\n>>> Lance : Unit Tests <<<"
 	./$(BIN_TEST_STRING)
 	./$(BIN_TEST_HTTP)
 
-check_integration:
-	@echo "\n>>> Lance : Integration Tests (Python) <<<"
-	python3 test_integration.py
-
-check_daemon:
-	@echo "\n>>> Lance : Daemon Tests (Python) <<<"
-	python3 test_daemon.py
+check_pytest:
+	@echo "\n>>> Lance : pytest <<<"
+	pytest
 
 clean:
 	rm -f $(BIN_TEST_STRING) $(BIN_TEST_HTTP) *.conf *.log

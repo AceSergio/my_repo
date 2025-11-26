@@ -4,14 +4,12 @@
 #include "config/config.h"
 #include "request.h"
 
-struct http_response
-{
-    char *status_line;
-    char *headers;
-    int body_fd;
-    size_t content_length;
+struct http_response {
+  char *status_line;
+  char *headers;
+  int body_fd;
+  size_t content_length;
 };
-
 
 struct http_response *http_response_create(const struct http_request *req,
                                            struct config *conf);

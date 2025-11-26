@@ -2,10 +2,10 @@ import os
 import time
 import signal
 import subprocess
-import sys
+import pytest
 
 BIN = "../httpd"
-PID_FILE = os.path.abspath("/tmp/httpd_daemon_test.pid")
+PID_FILE = os.path.abspath("/tmp/httpd_daemon_pytest.pid")
 LOG_FILE = os.path.abspath("daemon_test.log")
 
 BASE_CMD = [
@@ -19,16 +19,7 @@ BASE_CMD = [
     "--log", "true"
 ]
 
-def check_pid_running(pid):
-    """Vérifie si un processus avec ce PID existe."""
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
-
-def get_pid_from_file():
-    """Lit le PID depuis le fichier."""
+def get_pid():
     if not os.path.exists(PID_FILE):
         return None
     try:
@@ -37,97 +28,78 @@ def get_pid_from_file():
     except ValueError:
         return None
 
-def run_daemon_test():
+def is_running(pid):
+    if pid is None: return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+@pytest.fixture(autouse=True)
+def cleanup_daemon():
+    """Nettoie avant et après chaque test."""
+    # Setup : on s'assure que rien ne tourne
+    pid = get_pid()
+    if pid and is_running(pid):
+        os.kill(pid, signal.SIGKILL)
     if os.path.exists(PID_FILE):
-        pid = get_pid_from_file()
-        if pid and check_pid_running(pid):
-            os.kill(pid, signal.SIGKILL)
-        if os.path.exists(PID_FILE):
-            os.remove(PID_FILE)
-
-    print("\n--- DAEMON INTEGRATION TESTS ---")
+        os.remove(PID_FILE)
     
-    if not os.path.exists(BIN):
-        print(f"Error: Binary {BIN} not found. Run 'make' in root first.")
-        return 1
-
-    print("[TEST] Daemon Start ... ", end="")
+    yield # Exécution du test
     
-    cmd_start = BASE_CMD + ["--daemon", "start"]
-    try:
-        subprocess.check_call(cmd_start, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        print("FAIL (Command returned error)")
-        return 1
-
-    time.sleep(0.5)
-
-    if not os.path.exists(PID_FILE):
-        print("FAIL (PID file missing)")
-        return 1
-    
-    pid_start = get_pid_from_file()
-    if not pid_start or not check_pid_running(pid_start):
-        print(f"FAIL (Process {pid_start} not running)")
-        return 1
-        
-    print(f"PASS (PID: {pid_start})")
-
-    print("[TEST] Daemon Restart ... ", end="")
-    
-    cmd_restart = BASE_CMD + ["--daemon", "restart"]
-    try:
-        subprocess.check_call(cmd_restart, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        print("FAIL (Command error)")
-        return 1
-        
-    time.sleep(1.5)
-    pid_restart = get_pid_from_file()
-    
-    if not pid_restart:
-        print("FAIL (PID file missing after restart)")
-        return 1
-        
-    if pid_restart == pid_start:
-        print(f"FAIL (PID did not change: {pid_start})")
-        return 1
-        
-    if not check_pid_running(pid_restart):
-        print(f"FAIL (New process {pid_restart} not running)")
-        return 1
-        
-    if check_pid_running(pid_start):
-        print(f"FAIL (Old process {pid_start} still alive)")
-        return 1
-        
-    print(f"PASS (Old: {pid_start} -> New: {pid_restart})")
-
-    print("[TEST] Daemon Stop ... ", end="")
-    
-    cmd_stop = BASE_CMD + ["--daemon", "stop"]
-    try:
-        subprocess.check_call(cmd_stop, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        print("FAIL (Command error)")
-        return 1
-        
-    time.sleep(0.5)
-    
+    # Teardown : on nettoie ce qui reste
+    pid = get_pid()
+    if pid and is_running(pid):
+        os.kill(pid, signal.SIGKILL)
     if os.path.exists(PID_FILE):
-        print("FAIL (PID file still exists)")
-        return 1
-        
-    if check_pid_running(pid_restart):
-        print(f"FAIL (Process {pid_restart} still running)")
-        return 1
-        
-    print("PASS")
-    
+        os.remove(PID_FILE)
     if os.path.exists(LOG_FILE):
         os.remove(LOG_FILE)
 
-    return 0
+def test_daemon_start():
+    cmd = BASE_CMD + ["--daemon", "start"]
+    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    time.sleep(0.5)
+    
+    assert os.path.exists(PID_FILE), "PID file should exist"
+    pid = get_pid()
+    assert is_running(pid), f"Daemon process {pid} should be running"
 
-if __name__ == "__main__":
-    sys.exit(run_daemon_test())
+def test_daemon_restart():
+    # 1. Start initial
+    cmd_start = BASE_CMD + ["--daemon", "start"]
+    subprocess.check_call(cmd_start, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.5)
+    pid_1 = get_pid()
+    assert is_running(pid_1)
+
+    # 2. Restart
+    cmd_restart = BASE_CMD + ["--daemon", "restart"]
+    subprocess.check_call(cmd_restart, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5) # Restart délai + fork
+
+    # 3. Verifications
+    pid_2 = get_pid()
+    assert pid_2 is not None
+    assert pid_2 != pid_1, "PID should have changed after restart"
+    assert is_running(pid_2), "New daemon should be running"
+    assert not is_running(pid_1), "Old daemon should be dead"
+
+def test_daemon_stop():
+    # 1. Start
+    cmd_start = BASE_CMD + ["--daemon", "start"]
+    subprocess.check_call(cmd_start, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.5)
+    pid = get_pid()
+    assert is_running(pid)
+
+    # 2. Stop
+    cmd_stop = BASE_CMD + ["--daemon", "stop"]
+    subprocess.check_call(cmd_stop, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.5)
+
+    # 3. Verifications
+    assert not os.path.exists(PID_FILE), "PID file should be removed"
+    assert not is_running(pid), "Daemon process should be stopped"
