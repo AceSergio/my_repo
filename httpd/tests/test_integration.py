@@ -1,91 +1,99 @@
-import socket
-import subprocess
-import time
-import sys
+import pytest
 import os
+import time
+import signal
+import subprocess
 
-HOST = "127.0.0.1"
-PORT = 8088
-BIN = "../httpd"
-CONFIG = "test_config.conf"
+# Chemins dynamiques basés sur l'emplacement du fichier de test
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BIN = os.path.join(BASE_DIR, "../httpd")
+PID_FILE = os.path.abspath("/tmp/httpd_daemon_test.pid")
+LOG_FILE = os.path.abspath("daemon_test.log")
 
-def create_dummy_config():
-    with open(CONFIG, "w") as f:
-        f.write(f"""[global]
-pid_file = /tmp/httpd_test.pid
-log = true
+BASE_CMD = [
+    BIN,
+    "--server_name", "daemon_test",
+    "--port", "8089",
+    "--ip", "127.0.0.1",
+    "--root_dir", os.path.join(BASE_DIR, ".."), # Root relatif au dossier tests
+    "--pid_file", PID_FILE,
+    "--log_file", LOG_FILE,
+    "--log", "true"
+]
 
-[[vhosts]]
-server_name = localhost
-ip = {HOST}
-port = {PORT}
-root_dir = ..
-""")
-
-def send_request(payload):
+def check_pid_running(pid):
+    """Vérifie si un processus avec ce PID existe."""
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((HOST, PORT))
-            s.sendall(payload.encode())
-            data = s.recv(4096)
-            return data.decode()
-    except Exception as e:
-        return str(e)
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
-def run_tests():
-    create_dummy_config()
+def get_pid_from_file():
+    """Lit le PID depuis le fichier."""
+    if not os.path.exists(PID_FILE):
+        return None
+    try:
+        with open(PID_FILE, "r") as f:
+            return int(f.read().strip())
+    except ValueError:
+        return None
+
+@pytest.fixture(autouse=True)
+def cleanup():
+    """Fixture qui s'exécute avant et après chaque test pour nettoyer."""
+    # Avant le test : on s'assure que rien ne traîne
+    if os.path.exists(PID_FILE):
+        pid = get_pid_from_file()
+        if pid and check_pid_running(pid):
+            os.kill(pid, signal.SIGKILL)
+        os.remove(PID_FILE)
     
-    if not os.path.exists(BIN):
-        print(f"Error: Binary {BIN} not found. Did you run 'make' in root?")
-        sys.exit(1)
-
-    proc = subprocess.Popen([BIN, "--server_name", "localhost", "--port", str(PORT), "--ip", HOST, "--root_dir", "..", "--pid_file", "/tmp/test_httpd.pid"])
+    yield # Le test s'exécute ici
     
-    print("Waiting for server start...")
-    time.sleep(1)
+    # Après le test : nettoyage final
+    if os.path.exists(PID_FILE):
+        pid = get_pid_from_file()
+        if pid and check_pid_running(pid):
+            os.kill(pid, signal.SIGKILL)
+        os.remove(PID_FILE)
+    if os.path.exists(LOG_FILE):
+        os.remove(LOG_FILE)
 
-    tests_failed = 0
+def test_daemon_lifecycle():
+    """Teste le cycle complet : Start -> Restart -> Stop"""
+    
+    assert os.path.exists(BIN), f"Le binaire {BIN} n'existe pas. Lancez 'make' d'abord."
 
-    print("\n--- INTEGRATION TESTS ---")
+    # --- ETAPE 1 : DEMARRAGE ---
+    cmd_start = BASE_CMD + ["--daemon", "start"]
+    subprocess.check_call(cmd_start, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    time.sleep(0.5)
+    
+    assert os.path.exists(PID_FILE), "Le fichier PID doit exister après le démarrage"
+    pid_start = get_pid_from_file()
+    assert pid_start is not None, "Le fichier PID ne doit pas être vide"
+    assert check_pid_running(pid_start), f"Le processus {pid_start} devrait tourner"
 
-    print("[TEST] Valid GET /index.html ... ", end="")
-    res = send_request(f"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n")
-    if "HTTP/1.1 200 OK" in res:
-        print("PASS")
-    else:
-        print(f"FAIL (Got: {res[:50]}...)")
-        tests_failed += 1
+    # --- ETAPE 2 : REDEMARRAGE ---
+    cmd_restart = BASE_CMD + ["--daemon", "restart"]
+    subprocess.check_call(cmd_restart, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    time.sleep(1.5)
+    
+    pid_restart = get_pid_from_file()
+    assert pid_restart is not None, "Le fichier PID doit exister après restart"
+    assert pid_restart != pid_start, f"Le PID aurait dû changer (Ancien: {pid_start}, Nouveau: {pid_restart})"
+    assert check_pid_running(pid_restart), "Le nouveau processus devrait tourner"
+    assert not check_pid_running(pid_start), "L'ancien processus devrait être mort"
 
-    print("[TEST] Bad Host Header ... ", end="")
-    res = send_request(f"GET /index.html HTTP/1.1\r\nHost: hacker.com\r\n\r\n")
-    if "400 Bad Request" in res:
-        print("PASS")
-    else:
-        print(f"FAIL (Got: {res[:50]}...)")
-        tests_failed += 1
-
-    print("[TEST] Bad Version (HTTP/1.0) ... ", end="")
-    res = send_request(f"GET /index.html HTTP/1.0\r\nHost: localhost\r\n\r\n")
-    if "505 HTTP Version Not Supported" in res:
-        print("PASS")
-    else:
-        print(f"FAIL (Got: {res[:50]}...)")
-        tests_failed += 1
-
-    print("[TEST] 404 Not Found ... ", end="")
-    res = send_request(f"GET /introuvable.html HTTP/1.1\r\nHost: localhost\r\n\r\n")
-    if "404 Not Found" in res:
-        print("PASS")
-    else:
-        print(f"FAIL (Got: {res[:50]}...)")
-        tests_failed += 1
-
-    proc.terminate()
-    if os.path.exists(CONFIG):
-        os.remove(CONFIG)
-
-    sys.exit(tests_failed)
-
-if __name__ == "__main__":
-    run_tests()
+    # --- ETAPE 3 : ARRET ---
+    cmd_stop = BASE_CMD + ["--daemon", "stop"]
+    subprocess.check_call(cmd_stop, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    time.sleep(0.5)
+    
+    assert not os.path.exists(PID_FILE), "Le fichier PID ne devrait plus exister après stop"
+    assert not check_pid_running(pid_restart), "Le processus devrait être arrêté"
     

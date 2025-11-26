@@ -21,16 +21,16 @@ $(BIN_TEST_HTTP): test_http/test_http.c $(SRC_HTTP)
 check: check_unit check_integration
 
 check_unit: all
-	@echo "\n>>> Running Unit Tests <<<"
+	@echo "\n>>> Lance : Unit Tests <<<"
 	./$(BIN_TEST_STRING)
 	./$(BIN_TEST_HTTP)
 
 check_integration:
-	@echo "\n>>> Running Integration Tests (Python) <<<"
+	@echo "\n>>> Lance : Integration Tests (Python) <<<"
 	python3 test_integration.py
 
 check_daemon:
-	@echo "\n>>> Running Daemon Tests (Python) <<<"
+	@echo "\n>>> Lance : Daemon Tests (Python) <<<"
 	python3 test_daemon.py
 
 clean:
